@@ -3,14 +3,17 @@ package com.eveningoutpost.dexdrip.Models;
 import com.eveningoutpost.dexdrip.ImportedLibraries.usbserial.util.HexDump;
 import com.eveningoutpost.dexdrip.Models.UserError.Log;
 import com.eveningoutpost.dexdrip.NFCReaderX;
+import com.eveningoutpost.dexdrip.R;
+import com.eveningoutpost.dexdrip.UtilityModels.Blukon;
 import com.eveningoutpost.dexdrip.UtilityModels.BridgeResponse;
+import com.eveningoutpost.dexdrip.UtilityModels.LibreUtils;
 import com.eveningoutpost.dexdrip.UtilityModels.PersistentStore;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-
+import static com.eveningoutpost.dexdrip.xdrip.gs;
 /**
  * Created by Tzachi Dar on 7.3.2018.
  */
@@ -84,7 +87,7 @@ public class Tomato {
             
             if(buffer.length == 1 && buffer[0] == 0x34) {
                 Log.e(TAG, "No sensor has been found");
-                reply.setError_message("No sensor found");
+                reply.setError_message(gs(R.string.no_sensor_found));
               return reply;
             }
             
@@ -120,7 +123,7 @@ public class Tomato {
                        reply.getSend().clear();
                        reply.getSend().addAll(Tomato.resetTomatoState());
                        reply.setDelay(8000);
-                       reply.setError_message("Checksum failed - retrying");
+                       reply.setError_message(gs(R.string.checksum_failed__retrying));
                        Log.d(TAG,"Asking for retry of data");
                    }
                 } else throw e;
@@ -160,15 +163,19 @@ public class Tomato {
         s_recviedEnoughData = true;
         
         long now = JoH.tsl();
-        boolean checksum_ok = NFCReaderX.HandleGoodReading("tomato", data, now);
+        // Important note, the actual serial number is 8 bytes long and starts at addresses 5.
+        String SensorSn = LibreUtils.decodeSerialNumberKey(Arrays.copyOfRange(s_full_data, 5, 13));
+        boolean checksum_ok = NFCReaderX.HandleGoodReading(SensorSn, data, now, true);
         Log.e(TAG, "We have all the data that we need " + s_acumulatedSize + " checksum_ok = " + checksum_ok + HexDump.dumpHexString(data));
 
         if(!checksum_ok) {
             throw new RuntimeException(CHECKSUM_FAILED);
         }
         PersistentStore.setString("Tomatobattery", Integer.toString(s_full_data[13]));
+        Pref.setInt("bridge_battery", s_full_data[13]);
         PersistentStore.setString("TomatoHArdware",HexDump.toHexString(s_full_data,16,2));
         PersistentStore.setString("TomatoFirmware",HexDump.toHexString(s_full_data,14,2));
+        PersistentStore.setString("LibreSN", SensorSn);
 
         
     }

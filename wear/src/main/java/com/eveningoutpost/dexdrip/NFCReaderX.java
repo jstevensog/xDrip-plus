@@ -27,13 +27,14 @@ import com.eveningoutpost.dexdrip.Models.LibreBlock;
 import com.eveningoutpost.dexdrip.Models.LibreOOPAlgorithm;
 import com.eveningoutpost.dexdrip.Models.ReadingData;
 import com.eveningoutpost.dexdrip.Models.UserError.Log;
-import com.eveningoutpost.dexdrip.UtilityModels.LibreCrc;
+import com.eveningoutpost.dexdrip.UtilityModels.LibreUtils;
 import com.eveningoutpost.dexdrip.UtilityModels.PersistentStore;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
 import com.eveningoutpost.dexdrip.utils.DexCollectionType;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -212,18 +213,27 @@ public class NFCReaderX {
             doTheScan(context, tag, true);
         }
     }
+    public static boolean HandleGoodReading(String tagId, byte[] data1, final long CaptureDateTime) {
+        return HandleGoodReading(tagId, data1, CaptureDateTime, false);
+    }
 
     // returns true if checksum passed.
-    public static boolean HandleGoodReading(String tagId, byte[] data1, final long CaptureDateTime ) {
+    public static boolean HandleGoodReading(String tagId, byte[] data1, final long CaptureDateTime, boolean allowUpload ) {
 
-        final boolean checksum_ok = LibreCrc.verify(data1);
+        final boolean checksum_ok = LibreUtils.verify(data1);
         if (!checksum_ok) {
             return false;
+        }
+        
+        // The 4'th byte is where the sensor status is.
+        if(!LibreUtils.isSensorReady(data1[4])) {
+            Log.e(TAG, "Sensor is not ready, Ignoring reading!");
+            return true;
         }
 
         if (Pref.getBooleanDefaultFalse("external_blukon_algorithm")) {
             // Save raw block record (we start from block 0)
-            LibreBlock.createAndSave(tagId, CaptureDateTime, data1, 0);
+            LibreBlock.createAndSave(tagId, CaptureDateTime, data1, 0, allowUpload);
             LibreOOPAlgorithm.SendData(data1, CaptureDateTime);
         } else {
             final ReadingData mResult = parseData(0, tagId, data1, CaptureDateTime);
@@ -232,7 +242,7 @@ public class NFCReaderX {
                 public void run() {
                     final PowerManager.WakeLock wl = JoH.getWakeLock("processTransferObject", 60000);
                     try {
-                        LibreAlarmReceiver.processReadingDataTransferObject(new ReadingData.TransferObject(1, mResult), CaptureDateTime );
+                        LibreAlarmReceiver.processReadingDataTransferObject(new ReadingData.TransferObject(1, mResult), CaptureDateTime, tagId, allowUpload );
                         Home.staticRefreshBGCharts();
                     } finally {
                         JoH.releaseWakeLock(wl);
@@ -264,12 +274,13 @@ public class NFCReaderX {
                 if (tag == null) return;
                 if (!NFCReaderX.useNFC()) return;
                 if (succeeded) {
-                    final String tagId = bytesToHexString(tag.getId());
                     long now = JoH.tsl();
-                    boolean checksum_ok = HandleGoodReading(tagId, data, now);
+                    String SensorSn = LibreUtils.decodeSerialNumberKey(tag.getId());
+                    boolean checksum_ok = HandleGoodReading(SensorSn, data, now);
                     if(checksum_ok == false) {
                         Log.e(TAG, "Read data but checksum is wrong");
                     }
+                    PersistentStore.setString("LibreSN", SensorSn);
                 } else {
                     Log.d(TAG, "Scan did not succeed so ignoring buffer");
                 }
@@ -464,22 +475,6 @@ public class NFCReaderX {
 
         }
 
-    }
-
-    private static String bytesToHexString(byte[] src) {
-        StringBuilder builder = new StringBuilder("");
-        if (src == null || src.length <= 0) {
-            return "";
-        }
-
-        char[] buffer = new char[2];
-        for (byte b : src) {
-            buffer[0] = Character.forDigit((b >>> 4) & 0x0F, 16);
-            buffer[1] = Character.forDigit(b & 0x0F, 16);
-            builder.append(buffer);
-        }
-
-        return builder.toString();
     }
 
     public static ReadingData parseData(int attempt, String tagId, byte[] data, Long CaptureDateTime) {

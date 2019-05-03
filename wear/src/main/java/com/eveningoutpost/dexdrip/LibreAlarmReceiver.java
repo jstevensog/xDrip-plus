@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.preference.PreferenceManager;
 
+import com.eveningoutpost.dexdrip.Models.SensorSanity;
 import com.eveningoutpost.dexdrip.Models.UserError.Log;
 import com.eveningoutpost.dexdrip.ImportedLibraries.usbserial.util.HexDump;
 import com.eveningoutpost.dexdrip.Models.BgReading;
@@ -150,7 +151,7 @@ public class LibreAlarmReceiver extends BroadcastReceiver {
                                 try {
                                     final ReadingData.TransferObject object =
                                             new Gson().fromJson(data, ReadingData.TransferObject.class);
-                                    processReadingDataTransferObject(object, JoH.tsl());
+                                    processReadingDataTransferObject(object, JoH.tsl(), "LibreAlarm", false);
                                     Log.d(TAG, "At End: Oldest : " + JoH.dateTimeText(oldest_cmp) + " Newest : " + JoH.dateTimeText(newest_cmp));
                                 } catch (Exception e) {
                                     Log.wtf(TAG, "Could not process data structure from LibreAlarm: " + e.toString());
@@ -171,10 +172,10 @@ public class LibreAlarmReceiver extends BroadcastReceiver {
         }.start();
     }
 
-    public static void processReadingDataTransferObject(ReadingData.TransferObject object, long CaptureDateTime) {
+    public static void processReadingDataTransferObject(ReadingData.TransferObject object, long CaptureDateTime, String tagid, boolean allowUpload) {
     	Log.i(TAG, "Data that was recieved from librealarm is " + HexDump.dumpHexString(object.data.raw_data));
     	// Save raw block record (we start from block 0)
-        LibreBlock.createAndSave("LibreAlarm", CaptureDateTime, object.data.raw_data, 0);
+        LibreBlock.createAndSave(tagid, CaptureDateTime, object.data.raw_data, 0, allowUpload);
 
         if(Pref.getBooleanDefaultFalse("external_blukon_algorithm")) {
         	if(object.data.raw_data == null) {
@@ -196,7 +197,7 @@ public class LibreAlarmReceiver extends BroadcastReceiver {
             Collections.sort(mTrend);
             final long thisSensorAge = mTrend.get(mTrend.size() - 1).sensorTime;
             sensorAge = Pref.getInt("nfc_sensor_age", 0);
-            if (thisSensorAge > sensorAge) {
+            if (thisSensorAge > sensorAge || SensorSanity.allowTestingWithDeadSensor()) {
                 sensorAge = thisSensorAge;
                 Pref.setInt("nfc_sensor_age", (int) sensorAge);
                 Pref.setBoolean("nfc_age_problem", false);

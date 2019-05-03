@@ -2,10 +2,13 @@ package com.eveningoutpost.dexdrip.webservices;
 
 import android.util.Log;
 
+import com.eveningoutpost.dexdrip.Home;
 import com.eveningoutpost.dexdrip.Models.BgReading;
 import com.eveningoutpost.dexdrip.Models.DateUtil;
 import com.eveningoutpost.dexdrip.Models.UserError;
+import com.eveningoutpost.dexdrip.UtilityModels.NanoStatus;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
+import com.eveningoutpost.dexdrip.UtilityModels.SensorStatus;
 import com.eveningoutpost.dexdrip.dagger.Singleton;
 import com.eveningoutpost.dexdrip.utils.DexCollectionType;
 
@@ -43,6 +46,8 @@ public class WebServiceSgv extends BaseWebService {
         int heart_result_code = 0; // result code for any heart cgi parameters, 200 = good
         int tasker_result_code = 0; // result code for any heart cgi parameters, 200 = good
         int units_indicator = 1; // show the units we are using
+        String collector_status_string = null; // result of collector status
+        String sensor_status_string = null; // result of collector status
         boolean brief = false; // whether to cut out portions of the data
 
         final Map<String, String> cgi = getQueryParameters(query);
@@ -63,22 +68,32 @@ public class WebServiceSgv extends BaseWebService {
         if (cgi.containsKey("steps")) {
             UserError.Log.d(TAG, "Received steps request: " + cgi.get("steps"));
             // forward steps request to steps route
-            final WebResponse steps_reply_wr = ((RouteFinder)Singleton.get("RouteFinder")).handleRoute("steps/set/" + cgi.get("steps"));
+            final WebResponse steps_reply_wr = ((RouteFinder) Singleton.get("RouteFinder")).handleRoute("steps/set/" + cgi.get("steps"));
             steps_result_code = steps_reply_wr.resultCode;
         }
 
         if (cgi.containsKey("heart")) {
             UserError.Log.d(TAG, "Received heart request: " + cgi.get("heart"));
             // forward steps request to heart route
-            final WebResponse heart_reply_wr = ((RouteFinder)Singleton.get("RouteFinder")).handleRoute("heart/set/" + cgi.get("heart") + "/1"); // accuracy currently ignored (always 1) - TODO review
+            final WebResponse heart_reply_wr = ((RouteFinder) Singleton.get("RouteFinder")).handleRoute("heart/set/" + cgi.get("heart") + "/1"); // accuracy currently ignored (always 1) - TODO review
             heart_result_code = heart_reply_wr.resultCode;
         }
 
         if (cgi.containsKey("tasker")) {
             UserError.Log.d(TAG, "Received tasker request: " + cgi.get("tasker"));
             // forward steps request to heart route
-            final WebResponse tasker_reply_wr = ((RouteFinder)Singleton.get("RouteFinder")).handleRoute("tasker/" + cgi.get("tasker")); // send single word command to tasker, eg snooze or osnooze
+            final WebResponse tasker_reply_wr = ((RouteFinder) Singleton.get("RouteFinder")).handleRoute("tasker/" + cgi.get("tasker")); // send single word command to tasker, eg snooze or osnooze
             tasker_result_code = tasker_reply_wr.resultCode;
+        }
+
+        if (cgi.containsKey("collector")) {
+            UserError.Log.d(TAG,"Received collector status request");
+            collector_status_string = NanoStatus.nanoStatus("collector");
+        }
+
+        if (cgi.containsKey("sensor")) {
+            UserError.Log.d(TAG,"Received sensor status request");
+            sensor_status_string = SensorStatus.status();
         }
 
         if (cgi.containsKey("brief_mode")) {
@@ -87,7 +102,11 @@ public class WebServiceSgv extends BaseWebService {
 
 
         final JSONArray reply = new JSONArray();
-        final List<BgReading> readings = BgReading.latest(count);
+
+        // whether to include data which doesn't match the current sensor
+        final boolean ignore_sensor = Home.get_follower() || cgi.containsKey("all_data");
+
+        final List<BgReading> readings = BgReading.latest(count, ignore_sensor);
         if (readings != null) {
             // populate json structures
             try {
@@ -107,7 +126,11 @@ public class WebServiceSgv extends BaseWebService {
 
                     item.put("date", reading.timestamp);
                     item.put("sgv", (int) reading.getDg_mgdl());
-                    item.put("delta", new BigDecimal(reading.getDg_slope() * 5 * 60 * 1000).setScale(3, BigDecimal.ROUND_HALF_UP));
+                    try {
+                        item.put("delta", new BigDecimal(reading.getDg_slope() * 5 * 60 * 1000).setScale(3, BigDecimal.ROUND_HALF_UP));
+                    } catch (NumberFormatException e) {
+                        UserError.Log.e(TAG, "Could not pass delta to webservice as was invalid number");
+                    }
                     item.put("direction", reading.getDg_deltaName());
                     item.put("noise", reading.noiseValue());
 
@@ -147,6 +170,20 @@ public class WebServiceSgv extends BaseWebService {
                         tasker_result_code = 0;
                     }
 
+                    // emit nano-status string if present
+                    if (collector_status_string != null) {
+                        item.put("collector_status", collector_status_string);
+                        collector_status_string = null;
+                    }
+
+                    // TODO uploader battery
+
+                    // emit sensor status/age message if present
+                    if (sensor_status_string != null) {
+                        item.put("sensor_status", sensor_status_string);
+                        sensor_status_string = null;
+                    }
+
                     reply.put(item);
                 }
 
@@ -155,7 +192,13 @@ public class WebServiceSgv extends BaseWebService {
                 UserError.Log.wtf(TAG, "Got json exception: " + e);
             }
         }
-        return new WebResponse(reply.toString());
+
+        // whether to send empty string instead of empty json array
+        if (cgi.containsKey("no_empty") && reply.length() == 0) {
+            return new WebResponse("");
+        } else {
+            return new WebResponse(reply.toString());
+        }
     }
 
 

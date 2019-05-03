@@ -14,6 +14,8 @@ import com.eveningoutpost.dexdrip.Home;
 import com.eveningoutpost.dexdrip.Models.ActiveBluetoothDevice;
 import com.eveningoutpost.dexdrip.Models.UserError;
 import com.eveningoutpost.dexdrip.R;
+import com.eveningoutpost.dexdrip.Services.Ob1G5CollectionService;
+import com.eveningoutpost.dexdrip.UtilityModels.CollectionServiceStarter;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
 import com.eveningoutpost.dexdrip.xdrip;
 
@@ -30,15 +32,26 @@ public class DexCollectionHelper {
 
         switch (type) {
 
+            // g6 is currently a pseudo type which enables required g6 settings and then sets g5
+            case DexcomG6:
+                Ob1G5CollectionService.setG6Defaults();
+
+                DexCollectionType.setDexCollectionType(DexCollectionType.DexcomG5);
+                // intentional fall thru
+
             case DexcomG5:
+                final String pref = "dex_txid";
                 textSettingDialog(activity,
-                        "dex_txid", activity.getString(R.string.dexcom_transmitter_id),
+                        pref, activity.getString(R.string.dexcom_transmitter_id),
                         activity.getString(R.string.enter_your_transmitter_id_exactly),
                         InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
                         new Runnable() {
                             @Override
                             public void run() {
+                                // InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS does not seem functional here
+                                Pref.setString(pref, Pref.getString(pref, "").toUpperCase());
                                 Home.staticRefreshBGCharts();
+                                CollectionServiceStarter.restartCollectionServiceBackground();
                             }
                         });
                 break;
@@ -57,6 +70,21 @@ public class DexCollectionHelper {
                 break;
 
 
+            case NSFollow:
+                textSettingDialog(activity,
+                        "nsfollow_url", "Nightscout Follow URL",
+                        "Web address for following",
+                        InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                Home.staticRefreshBGCharts();
+                                CollectionServiceStarter.restartCollectionServiceBackground();
+                            }
+                        });
+                break;
+
+
             case LimiTTer:
                 bluetoothScanIfNeeded();
                 break;
@@ -69,14 +97,17 @@ public class DexCollectionHelper {
                 bluetoothScanIfNeeded();
                 break;
 
+            case Medtrum:
+                bluetoothScanIfNeeded();
+                break;
 
-                // TODO G4 Share Receiver
+            // TODO G4 Share Receiver
 
-                // TODO Parakeet / Wifi ??
+            // TODO Parakeet / Wifi ??
 
-                // TODO Bluetooth devices without active device -> bluetooth scan
+            // TODO Bluetooth devices without active device -> bluetooth scan
 
-                // TODO Helper apps not installed? Prompt for installation
+            // TODO Helper apps not installed? Prompt for installation
 
         }
 

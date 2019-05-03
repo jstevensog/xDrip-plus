@@ -27,6 +27,7 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
+import com.eveningoutpost.dexdrip.BaseAppCompatActivity;
 import com.eveningoutpost.dexdrip.BuildConfig;
 import com.eveningoutpost.dexdrip.Models.JoH;
 import com.eveningoutpost.dexdrip.Models.UserError;
@@ -52,9 +53,9 @@ import okhttp3.Response;
 
 import static com.eveningoutpost.dexdrip.UtilityModels.OkHttpWrapper.enableTls12OnPreLollipop;
 
-public class UpdateActivity extends AppCompatActivity {
+public class UpdateActivity extends BaseAppCompatActivity {
 
-    private static final String autoUpdatePrefsName = "auto_update_download";
+    public static final String AUTO_UPDATE_PREFS_NAME = "auto_update_download";
     private static final String useInternalDownloaderPrefsName = "use_internal_downloader";
     private static final String last_update_check_time = "last_update_check_time";
     private static final String TAG = "jamorham update";
@@ -79,7 +80,7 @@ public class UpdateActivity extends AppCompatActivity {
 
     public static void checkForAnUpdate(final Context context) {
         if (prefs == null) prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        if ((last_check_time != -1) && (!prefs.getBoolean(autoUpdatePrefsName, true))) return;
+        if ((last_check_time != -1) && (!prefs.getBoolean(AUTO_UPDATE_PREFS_NAME, true))) return;
         if (last_check_time == 0)
             last_check_time = prefs.getLong(last_update_check_time, 0);
         if (((JoH.tsl() - last_check_time) > 86300000) || (debug)) {
@@ -214,11 +215,11 @@ public class UpdateActivity extends AppCompatActivity {
         updateMessageText = (TextView) findViewById(R.id.updatemessage);
 
         Switch autoUpdateSwitch = (Switch) findViewById(R.id.autoupdate);
-        autoUpdateSwitch.setChecked(prefs.getBoolean(autoUpdatePrefsName, true));
+        autoUpdateSwitch.setChecked(prefs.getBoolean(AUTO_UPDATE_PREFS_NAME, true));
         autoUpdateSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                prefs.edit().putBoolean(autoUpdatePrefsName, isChecked).commit();
+                prefs.edit().putBoolean(AUTO_UPDATE_PREFS_NAME, isChecked).commit();
                 Log.d(TAG, "Auto Updates IsChecked:" + isChecked);
             }
         });

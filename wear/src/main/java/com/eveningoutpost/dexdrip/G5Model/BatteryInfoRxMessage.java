@@ -1,6 +1,5 @@
 package com.eveningoutpost.dexdrip.G5Model;
 
-import com.eveningoutpost.dexdrip.Models.JoH;
 import com.eveningoutpost.dexdrip.Models.UserError;
 import com.eveningoutpost.dexdrip.Services.G5CollectionService;
 
@@ -13,7 +12,7 @@ import java.util.Locale;
  */
 
 
-public class BatteryInfoRxMessage extends TransmitterMessage {
+public class BatteryInfoRxMessage extends BaseMessage {
 
     private final static String TAG = G5CollectionService.TAG; // meh
 
@@ -27,7 +26,7 @@ public class BatteryInfoRxMessage extends TransmitterMessage {
     public int temperature;
 
     public BatteryInfoRxMessage(byte[] packet) {
-        if (packet.length >= 12) {
+        if (packet.length >= 10) {
             data = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN);
             if (data.get() == opcode) {
                 status = data.get();
@@ -39,6 +38,8 @@ public class BatteryInfoRxMessage extends TransmitterMessage {
             } else {
                 UserError.Log.wtf(TAG, "Invalid opcode for BatteryInfoRxMessage");
             }
+        } else {
+            UserError.Log.wtf(TAG, "Invalid length for BatteryInfoMessage: " + packet.length);
         }
     }
 

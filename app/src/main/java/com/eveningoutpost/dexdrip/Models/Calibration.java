@@ -26,6 +26,7 @@ import com.eveningoutpost.dexdrip.UtilityModels.CollectionServiceStarter;
 import com.eveningoutpost.dexdrip.UtilityModels.Constants;
 import com.eveningoutpost.dexdrip.UtilityModels.Notifications;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
+import com.eveningoutpost.dexdrip.calibrations.NativeCalibrationPipe;
 import com.eveningoutpost.dexdrip.calibrations.PluggableCalibration;
 import com.eveningoutpost.dexdrip.utils.DexCollectionType;
 import com.eveningoutpost.dexdrip.xdrip;
@@ -271,15 +272,22 @@ public class Calibration extends Model {
         final Sensor sensor = Sensor.currentSensor();
         final List<BgReading> bgReadings = BgReading.latest_by_size(3);
 
-        // don't allow initial calibration if data would be stale
+        // don't allow initial calibration if data would be stale (but still use data for native mode)
             if ((bgReadings == null) || (bgReadings.size() != 3) || !isDataSuitableForDoubleCalibration() ){
-            UserError.Log.wtf(TAG, "Did not find 3 readings for initial calibration - aborting");
 
             if (Ob1G5CollectionService.usingNativeMode()) {
-                JoH.static_toast_long("Sending Blood Tests to G5 Native");
+                JoH.static_toast_long("Sending Blood Tests to Transmitter"); // TODO extract string
                 BloodTest.create(JoH.tsl() - (Constants.SECOND_IN_MS * 30), bg1, "Initial Calibration");
                 BloodTest.create(JoH.tsl(), bg2, "Initial Calibration");
+
+                if (!Pref.getBooleanDefaultFalse("bluetooth_meter_for_calibrations_auto")) {
+                    // blood tests above don't automatically become part of calibration pipe if this setting is unset so do here
+                    NativeCalibrationPipe.addCalibration((int) bg1, JoH.tsl() - (Constants.SECOND_IN_MS * 30));
+                    NativeCalibrationPipe.addCalibration((int) bg2, JoH.tsl());
+                }
+
             } else {
+                UserError.Log.wtf(TAG, "Did not find 3 readings for initial calibration - aborting");
                 JoH.static_toast_long("Not enough recent sensor data! - cancelling!");
             }
             return;
@@ -352,8 +360,10 @@ public class Calibration extends Model {
 
         JoH.clearCache();
 
-        Ob1G5StateMachine.addCalibration((int) bg1, JoH.tsl() - (Constants.SECOND_IN_MS * 30));
-        Ob1G5StateMachine.addCalibration((int) bg2, JoH.tsl());
+
+        NativeCalibrationPipe.addCalibration((int) bg1, JoH.tsl() - (Constants.SECOND_IN_MS * 30));
+        NativeCalibrationPipe.addCalibration((int) bg2, JoH.tsl());
+
 
         final List<Calibration> calibrations = new ArrayList<Calibration>();
         calibrations.add(lowerCalibration);
@@ -380,7 +390,7 @@ public class Calibration extends Model {
             adjustRecentBgReadings(5);
         }
         CalibrationRequest.createOffset(lowerCalibration.bg, 35);
-        context.startService(new Intent(context, Notifications.class));
+        Notifications.staticUpdateNotification();
     }
 
     //Create Calibration Checkin Dexcom Bluetooth Share
@@ -453,7 +463,7 @@ public class Calibration extends Model {
                     Calibration.create(calRecords, context, true, 0);
                 }
             }
-            context.startService(new Intent(context, Notifications.class));
+            Notifications.start();
         }
     }
 
@@ -595,7 +605,7 @@ public class Calibration extends Model {
                         if (!Ob1G5CollectionService.usingNativeMode()) {
                             adjustRecentBgReadings(adjustPast ? 30 : 2);
                         }
-                        context.startService(new Intent(context, Notifications.class));
+                        Notifications.start();
                         Calibration.requestCalibrationIfRangeTooNarrow();
                         newFingerStickData();
                     } else {

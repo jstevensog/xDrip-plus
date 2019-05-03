@@ -9,7 +9,6 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.support.annotation.LayoutRes;
 import android.support.v4.view.MenuItemCompat;
-import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.SearchView;
@@ -34,6 +33,7 @@ import com.eveningoutpost.dexdrip.UtilityModels.PersistentStore;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
 import com.eveningoutpost.dexdrip.UtilityModels.SendFeedBack;
 import com.eveningoutpost.dexdrip.databinding.ActivityEventLogBinding;
+import com.eveningoutpost.dexdrip.ui.helpers.BitmapUtil;
 import com.eveningoutpost.dexdrip.utils.ExtensionMethods;
 import com.eveningoutpost.dexdrip.wearintegration.WatchUpdaterService;
 
@@ -56,7 +56,7 @@ import static com.eveningoutpost.dexdrip.Home.startWatchUpdaterService;
  *
  */
 @ExtensionMethod({java.util.Arrays.class, ExtensionMethods.class})
-public class EventLogActivity extends AppCompatActivity {
+public class EventLogActivity extends BaseAppCompatActivity {
 
     private static final List<Integer> severitiesList = new ArrayList<>();
     private static final boolean D = false;
@@ -341,7 +341,9 @@ public class EventLogActivity extends AppCompatActivity {
             JoH.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    streamed_items.addAll(0, newItems);
+                    synchronized (items) {
+                        streamed_items.addAll(0, newItems);
+                    }
                     refreshNewItems(newItems.size());
                     if (isAtTop()) {
                         // If unmoved or already at top then scroll to new values
@@ -402,13 +404,15 @@ public class EventLogActivity extends AppCompatActivity {
         void filter(final String filter) {
             currentFilter = filter.or(getCurrentFilter()).toLowerCase().trim();
             visible.clear();
+            synchronized (items) {
             // skip filter on initial defaults for speed
             if (isDefaultFilters()) {
                 visible.addAll(items);
             } else {
-                for (UserError item : items) {
-                    if (filterMatch(item)) {
-                        visible.add(item);
+                    for (UserError item : items) {
+                        if (filterMatch(item)) {
+                            visible.add(item);
+                        }
                     }
                 }
             }
@@ -420,13 +424,15 @@ public class EventLogActivity extends AppCompatActivity {
             currentFilter = filter.or(getCurrentFilter()).toLowerCase().trim();
             int c = 0;
             int added = 0;
-            for (UserError item : items) {
-                if (filterMatch(item)) {
-                    visible.add(0, item);
-                    added++;
+            synchronized (items) {
+                for (UserError item : items) {
+                    if (filterMatch(item)) {
+                        visible.add(0, item);
+                        added++;
+                    }
+                    c++;
+                    if (c >= count) break;
                 }
-                c++;
-                if (c >= count) break;
             }
             adapterChain.notifyItemRangeChanged(0, added);
             // avoid duplicate titles
@@ -473,10 +479,12 @@ public class EventLogActivity extends AppCompatActivity {
         // scroll to top and update button visibility accordingly with smooth option
         public void scrollToTop(boolean smooth) {
             showScrollToTop.set(false);
-            if (smooth) {
-                recyclerView.smoothScrollToPosition(0);
-            } else {
-                recyclerView.scrollToPosition(0);
+            if (recyclerView != null) {
+                if (smooth) {
+                    recyclerView.smoothScrollToPosition(0);
+                } else {
+                    recyclerView.scrollToPosition(0);
+                }
             }
         }
 
@@ -556,7 +564,8 @@ public class EventLogActivity extends AppCompatActivity {
 
         // reformat text size for long messages
         public float textSize(String message) {
-            final float scale = 4f;
+            //   final float scale = 4f;
+            final float scale = 2.0f * BitmapUtil.getScreenDensity();
             if (message.length() > 100) return 5f * scale;
             return 7f * scale;
         }

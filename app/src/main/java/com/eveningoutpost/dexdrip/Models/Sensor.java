@@ -1,7 +1,5 @@
 package com.eveningoutpost.dexdrip.Models;
 
-import android.content.SharedPreferences;
-import android.preference.PreferenceManager;
 import android.provider.BaseColumns;
 
 import com.activeandroid.Model;
@@ -21,6 +19,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -74,6 +73,14 @@ public class Sensor extends Model {
         return sensor;
     }
 
+    public static Sensor createDefaultIfMissing() {
+        final Sensor sensor = currentSensor();
+        if (sensor == null) {
+            Sensor.create(JoH.tsl());
+        }
+        return currentSensor();
+    }
+
     // Used by xDripViewer
     public static void createUpdate(long started_at, long stopped_at,  int latest_battery_level, String uuid) {
 
@@ -91,15 +98,19 @@ public class Sensor extends Model {
         sensor.save();
     }
 
-    public static void stopSensor() {
-        Sensor sensor = currentSensor();
-        if(sensor == null) {
+    public synchronized static void stopSensor() {
+        final Sensor sensor = currentSensor();
+        if (sensor == null) {
             return;
         }
-        sensor.stopped_at = new Date().getTime();
-        Log.i("SENSOR", "Sensor stopped at " + sensor.stopped_at);
+        sensor.stopped_at = JoH.tsl();
+        UserError.Log.ueh("SENSOR", "Sensor stopped at " + JoH.dateTimeText(sensor.stopped_at));
         sensor.save();
+        if (currentSensor() != null) {
+            UserError.Log.wtf(TAG, "Failed to update sensor stop in database");
+        }
         SensorSendQueue.addToQueue(sensor);
+        JoH.clearCache();
 
     }
 
@@ -260,5 +271,14 @@ public class Sensor extends Model {
         }
     }
 
+
+    public static void shutdownAllSensors() {
+        final List<Sensor> l = new Select().from(Sensor.class).execute();
+        for (final Sensor s : l) {
+            s.stopped_at = s.started_at;
+            s.save();
+            System.out.println(s.toJSON());
+        }
+    }
 }
 
